@@ -22,20 +22,37 @@ if (code.includes('function getTitleBarOverlayOptions() {') && !code.includes('i
   console.log('[niyatna-patch] ✓ Patched getTitleBarOverlayOptions for Linux native frame')
 }
 
-// 2. Patch createWindow for Native GTK Frame, show: true on Linux, and System Tray
-code = code.replace(
-  /show:\s*false,/,
-  'show: IS_LINUX ? true : false,'
-)
+// 2. Patch createWindow specifically
+const createWinIdx = code.indexOf('function createWindow() {')
+if (createWinIdx !== -1) {
+  const before = code.slice(0, createWinIdx)
+  let after = code.slice(createWinIdx)
 
-// Ensure frame: true on Linux
-code = code.replace(
-  "titleBarStyle: 'hidden',",
-  "...(IS_LINUX ? { frame: true, titleBarStyle: 'default' as const, titleBarOverlay: false } : { titleBarStyle: 'hidden' as const }),"
-)
+  // Replace show: false inside createWindow
+  after = after.replace('show: false,', 'show: IS_LINUX ? true : false,')
+  console.log('[niyatna-patch] ✓ Forced show: true on Linux in createWindow')
 
-const targetTrayHook = `  const createdMainWindow = mainWindow`
-const trayCode = `  // System Tray Setup
+  // Replace titleBar options inside createWindow
+  const targetWinOpts = `    titleBarStyle: 'hidden',
+    titleBarOverlay: getTitleBarOverlayOptions(),
+    trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,`
+
+  const replaceWinOpts = `    ...(IS_LINUX
+      ? { frame: true, titleBarStyle: 'default' as const, titleBarOverlay: false }
+      : {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: getTitleBarOverlayOptions(),
+          trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined
+        }),`
+
+  if (after.includes(targetWinOpts)) {
+    after = after.replace(targetWinOpts, replaceWinOpts)
+    console.log('[niyatna-patch] ✓ Replaced window frame options with native GTK frame on Linux')
+  }
+
+  // System Tray injection inside createWindow
+  const targetTrayHook = `  const createdMainWindow = mainWindow`
+  const trayCode = `  // System Tray Setup
   if (!(global as any).appTray) {
     const iconPath = getAppIconPath()
     if (iconPath) {
@@ -112,9 +129,12 @@ const trayCode = `  // System Tray Setup
 
   const createdMainWindow = mainWindow`
 
-if (code.includes(targetTrayHook) && !code.includes('// System Tray Setup')) {
-  code = code.replace(targetTrayHook, trayCode)
-  console.log('[niyatna-patch] ✓ Injected System Tray & Close-to-Tray logic')
+  if (after.includes(targetTrayHook) && !after.includes('// System Tray Setup')) {
+    after = after.replace(targetTrayHook, trayCode)
+    console.log('[niyatna-patch] ✓ Injected System Tray & Close-to-Tray logic')
+  }
+
+  code = before + after
 }
 
 // 3. Patch second-instance to always restore and show window if hidden in tray
