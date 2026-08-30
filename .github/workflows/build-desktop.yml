@@ -3,8 +3,17 @@ name: Build & Release Desktop
 on:
   workflow_dispatch:
     inputs:
-      upstream_tag:
-        description: 'Specific upstream tag to build (leave empty for latest NousResearch release)'
+      build_target:
+        description: 'Build target'
+        required: true
+        type: choice
+        options:
+          - 'latest-release'
+          - 'latest-commit'
+          - 'custom-ref'
+        default: 'latest-release'
+      custom_ref:
+        description: 'Tag name or commit SHA (only used if build_target is custom-ref)'
         required: false
         default: ''
       publish_release:
@@ -14,12 +23,6 @@ on:
         default: true
   schedule:
     - cron: '0 4 * * *' # Daily at 04:00 UTC
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/build-desktop.yml'
 
 permissions:
   contents: write
@@ -28,26 +31,38 @@ jobs:
   check-and-build:
     runs-on: ubuntu-latest
     steps:
-      - name: Determine Target Tag & Version
+      - name: Determine Upstream Ref & Release Metadata
         id: meta
         run: |
-          if [ -n "${{ inputs.upstream_tag }}" ]; then
-            TAG="${{ inputs.upstream_tag }}"
-          else
-            TAG=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/releases/latest | jq -r '.tag_name // empty')
-            if [ -z "$TAG" ]; then
-              TAG=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/tags | jq -r '.[0].name // empty')
-            fi
-          fi
+          TARGET="${{ inputs.build_target || 'latest-release' }}"
 
-          if [ -z "$TAG" ]; then
-            TAG="v2026.8.27"
+          if [ "$TARGET" = "custom-ref" ] && [ -n "${{ inputs.custom_ref }}" ]; then
+            REF="${{ inputs.custom_ref }}"
+            TAG="$REF"
+            TITLE="Hermes Desktop $TAG"
+          elif [ "$TARGET" = "latest-commit" ]; then
+            LATEST_SHA=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/commits/main | jq -r '.sha // empty')
+            SHORT_SHA="${LATEST_SHA:0:7}"
+            DATE_STR=$(date -u +'%Y.%m.%d')
+            REF="main"
+            TAG="nightly-${DATE_STR}-${SHORT_SHA}"
+            TITLE="Hermes Desktop Nightly (${DATE_STR} - ${SHORT_SHA})"
+          else
+            UPSTREAM_TAG=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/releases/latest | jq -r '.tag_name // empty')
+            if [ -z "$UPSTREAM_TAG" ]; then
+              UPSTREAM_TAG=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/tags | jq -r '.[0].name // empty')
+            fi
+            REF="$UPSTREAM_TAG"
+            TAG="$UPSTREAM_TAG"
+            TITLE="Hermes Agent Desktop $TAG"
           fi
 
           CLEAN_VER="${TAG#v}"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
           echo "version=$CLEAN_VER" >> "$GITHUB_OUTPUT"
-          echo "Target Tag: $TAG (Version: $CLEAN_VER)"
+          echo "Target Ref: $REF | Release Tag: $TAG | Version: $CLEAN_VER"
 
       - name: Check if Release Already Exists
         id: check_release
@@ -63,10 +78,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout Code
+      - name: Checkout Code from Upstream (NousResearch/hermes-agent)
         if: steps.check_release.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
+          repository: 'NousResearch/hermes-agent'
+          ref: ${{ steps.meta.outputs.ref }}
           fetch-depth: 1
 
       - name: Setup Node.js
@@ -87,15 +104,13 @@ jobs:
       - name: Build & Package Desktop App
         if: steps.check_release.outputs.skip != 'true'
         env:
-          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ steps.meta.outputs.ref }}
           GITHUB_REF_NAME: ${{ steps.meta.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
           cd apps/desktop
-          # Build renderer and bundle electron-main
           npm run build
-          # Build Linux deb and AppImage packages without built-in publisher
           npm run builder -- --linux deb AppImage --publish never
 
       - name: Upload Artifacts
@@ -109,13 +124,13 @@ jobs:
             apps/desktop/release/*.yaml
 
       - name: Publish GitHub Release
-        if: steps.check_release.outputs.skip != 'true' && (inputs.publish_release != false || github.event_name == 'schedule' || github.event_name == 'push')
+        if: steps.check_release.outputs.skip != 'true' && (inputs.publish_release != false || github.event_name == 'schedule')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: "Hermes Agent Desktop ${{ steps.meta.outputs.tag }}"
+          name: "${{ steps.meta.outputs.title }}"
           body: |
-            Automated Desktop build for Hermes Agent [${{ steps.meta.outputs.tag }}](https://github.com/NousResearch/hermes-agent/releases/tag/${{ steps.meta.outputs.tag }}).
+            Automated Desktop build for Hermes Agent [${{ steps.meta.outputs.ref }}](https://github.com/NousResearch/hermes-agent/tree/${{ steps.meta.outputs.ref }}).
             
             ### Assets included:
             * Linux `.deb` package
