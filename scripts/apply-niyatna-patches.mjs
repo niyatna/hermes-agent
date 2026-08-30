@@ -94,11 +94,55 @@ const trayCode = `  // System Tray Setup
     }
   })
 
+  // Ensure window is revealed on Linux
+  if (IS_LINUX) {
+    mainWindow.once('ready-to-show', () => {
+      mainWindow?.show()
+      mainWindow?.focus()
+    })
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow?.show()
+      mainWindow?.focus()
+    })
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    }, 1500)
+  }
+
   const createdMainWindow = mainWindow`
 
 if (code.includes(targetTrayHook) && !code.includes('// System Tray Setup')) {
   code = code.replace(targetTrayHook, trayCode)
   console.log('[niyatna-patch] ✓ Injected System Tray & Close-to-Tray logic')
+}
+
+// 3. Patch second-instance to always restore and show window if hidden in tray
+const targetSecondInstance = `    ensureMainWindow(mainWindow, {
+      isReady: app.isReady(),
+      createWindow,
+      focusWindow,
+      // deep-link delivery focuses a live window after its renderer is ready.
+      focusExisting: !url
+    })`
+
+const replaceSecondInstance = `    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+    ensureMainWindow(mainWindow, {
+      isReady: app.isReady(),
+      createWindow,
+      focusWindow,
+      focusExisting: !url
+    })`
+
+if (code.includes(targetSecondInstance)) {
+  code = code.replace(targetSecondInstance, replaceSecondInstance)
+  console.log('[niyatna-patch] ✓ Patched second-instance to unhide from tray on dock click')
 }
 
 fs.writeFileSync(mainTsPath, code, 'utf8')
