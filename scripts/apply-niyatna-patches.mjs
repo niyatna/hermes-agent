@@ -22,23 +22,17 @@ if (code.includes('function getTitleBarOverlayOptions() {') && !code.includes('i
   console.log('[niyatna-patch] ✓ Patched getTitleBarOverlayOptions for Linux native frame')
 }
 
-// 2. Patch createWindow for Native GTK Frame & System Tray
-const targetCreateWin = `    titleBarStyle: 'hidden',
-    titleBarOverlay: getTitleBarOverlayOptions(),
-    trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,`
+// 2. Patch createWindow for Native GTK Frame, show: true on Linux, and System Tray
+code = code.replace(
+  /show:\s*false,/,
+  'show: IS_LINUX ? true : false,'
+)
 
-const replacementCreateWin = `    ...(IS_LINUX
-      ? { frame: true, titleBarStyle: 'default' as const, titleBarOverlay: false }
-      : {
-          titleBarStyle: 'hidden' as const,
-          titleBarOverlay: getTitleBarOverlayOptions(),
-          trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined
-        }),`
-
-if (code.includes(targetCreateWin)) {
-  code = code.replace(targetCreateWin, replacementCreateWin)
-  console.log('[niyatna-patch] ✓ Patched BrowserWindow frame options for Linux')
-}
+// Ensure frame: true on Linux
+code = code.replace(
+  "titleBarStyle: 'hidden',",
+  "...(IS_LINUX ? { frame: true, titleBarStyle: 'default' as const, titleBarOverlay: false } : { titleBarStyle: 'hidden' as const }),"
+)
 
 const targetTrayHook = `  const createdMainWindow = mainWindow`
 const trayCode = `  // System Tray Setup
@@ -46,14 +40,19 @@ const trayCode = `  // System Tray Setup
     const iconPath = getAppIconPath()
     if (iconPath) {
       try {
-        const { Tray, Menu } = require('electron')
-        const tray = new Tray(iconPath)
+        const { Tray, Menu, nativeImage } = require('electron')
+        let trayIcon = nativeImage.createFromPath(iconPath)
+        if (!trayIcon.isEmpty()) {
+          trayIcon = trayIcon.resize({ width: 22, height: 22 })
+        }
+        const tray = new Tray(trayIcon)
         ;(global as any).appTray = tray
         const contextMenu = Menu.buildFromTemplate([
           {
             label: 'Show Hermes',
             click: () => {
               if (mainWindow) {
+                if (mainWindow.isMinimized()) mainWindow.restore()
                 mainWindow.show()
                 mainWindow.focus()
               }
@@ -74,6 +73,7 @@ const trayCode = `  // System Tray Setup
             if (mainWindow.isVisible()) {
               mainWindow.hide()
             } else {
+              if (mainWindow.isMinimized()) mainWindow.restore()
               mainWindow.show()
               mainWindow.focus()
             }
@@ -94,22 +94,20 @@ const trayCode = `  // System Tray Setup
     }
   })
 
-  // Ensure window is revealed on Linux
+  // Ensure window is revealed and focused on Linux
   if (IS_LINUX) {
     mainWindow.once('ready-to-show', () => {
-      mainWindow?.show()
-      mainWindow?.focus()
-    })
-    mainWindow.webContents.once('did-finish-load', () => {
-      mainWindow?.show()
-      mainWindow?.focus()
-    })
-    setTimeout(() => {
-      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show()
         mainWindow.focus()
       }
-    }, 1500)
+    })
+    mainWindow.webContents.once('did-finish-load', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    })
   }
 
   const createdMainWindow = mainWindow`
