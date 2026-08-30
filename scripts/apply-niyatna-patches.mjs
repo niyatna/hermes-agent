@@ -14,10 +14,10 @@ let code = fs.readFileSync(mainTsPath, 'utf8')
 console.log('[niyatna-patch] Applying Niyatna System Tray & Native GTK Window Controls patch...')
 
 // 1. Patch getTitleBarOverlayOptions to return false on Linux
-if (code.includes('function getTitleBarOverlayOptions() {') && !code.includes('if (IS_LINUX) {\n    return false\n  }')) {
+if (code.includes('function getTitleBarOverlayOptions() {') && !code.includes('if (process.platform === \'linux\') {\n    return false\n  }')) {
   code = code.replace(
     'function getTitleBarOverlayOptions() {',
-    'function getTitleBarOverlayOptions() {\n  if (IS_LINUX) {\n    return false\n  }'
+    'function getTitleBarOverlayOptions() {\n  if (process.platform === \'linux\') {\n    return false\n  }'
   )
   console.log('[niyatna-patch] ✓ Patched getTitleBarOverlayOptions for Linux native frame')
 }
@@ -29,7 +29,7 @@ if (createWinIdx !== -1) {
   let after = code.slice(createWinIdx)
 
   // Replace show: false inside createWindow
-  after = after.replace('show: false,', 'show: IS_LINUX ? true : false,')
+  after = after.replace('show: false,', 'show: process.platform === \'linux\' ? true : false,')
   console.log('[niyatna-patch] ✓ Forced show: true on Linux in createWindow')
 
   // Replace titleBar options inside createWindow
@@ -37,7 +37,7 @@ if (createWinIdx !== -1) {
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,`
 
-  const replaceWinOpts = `    ...(IS_LINUX
+  const replaceWinOpts = `    ...(process.platform === 'linux'
       ? { frame: true, titleBarStyle: 'default' as const, titleBarOverlay: false }
       : {
           titleBarStyle: 'hidden' as const,
@@ -112,7 +112,7 @@ if (createWinIdx !== -1) {
   })
 
   // Ensure window is revealed and focused on Linux
-  if (IS_LINUX) {
+  if (process.platform === 'linux') {
     mainWindow.once('ready-to-show', () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show()
