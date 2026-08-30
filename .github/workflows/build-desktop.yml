@@ -40,13 +40,17 @@ jobs:
             REF="${{ inputs.custom_ref }}"
             TAG="$REF"
             TITLE="Hermes Desktop $TAG"
+            CLEAN_VER="0.20.7"
           elif [ "$TARGET" = "latest-commit" ]; then
             LATEST_SHA=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/commits/main | jq -r '.sha // empty')
             SHORT_SHA="${LATEST_SHA:0:7}"
             DATE_STR=$(date -u +'%Y.%m.%d')
+            DATE_SEMVER=$(date -u +'%Y.%-m.%-d')
             REF="main"
             TAG="nightly-${DATE_STR}-${SHORT_SHA}"
             TITLE="Hermes Desktop Nightly (${DATE_STR} - ${SHORT_SHA})"
+            # Use valid SemVer for package.json / electron-builder
+            CLEAN_VER="${DATE_SEMVER}"
           else
             UPSTREAM_TAG=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/releases/latest | jq -r '.tag_name // empty')
             if [ -z "$UPSTREAM_TAG" ]; then
@@ -55,9 +59,9 @@ jobs:
             REF="$UPSTREAM_TAG"
             TAG="$UPSTREAM_TAG"
             TITLE="Hermes Agent Desktop $TAG"
+            CLEAN_VER="${TAG#v}"
           fi
 
-          CLEAN_VER="${TAG#v}"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "title=$TITLE" >> "$GITHUB_OUTPUT"
