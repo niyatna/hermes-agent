@@ -1,0 +1,123 @@
+name: Build & Release Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Specific upstream tag to build (leave empty for latest NousResearch release)'
+        required: false
+        default: ''
+      publish_release:
+        description: 'Create a GitHub Release with assets'
+        required: true
+        type: boolean
+        default: true
+  schedule:
+    - cron: '0 4 * * *' # Daily at 04:00 UTC
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/desktop/**'
+      - '.github/workflows/build-desktop.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine Target Tag & Version
+        id: meta
+        run: |
+          if [ -n "${{ inputs.upstream_tag }}" ]; then
+            TAG="${{ inputs.upstream_tag }}"
+          else
+            TAG=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/releases/latest | jq -r '.tag_name // empty')
+            if [ -z "$TAG" ]; then
+              TAG=$(curl -s https://api.github.com/repos/NousResearch/hermes-agent/tags | jq -r '.[0].name // empty')
+            fi
+          fi
+
+          if [ -z "$TAG" ]; then
+            TAG="v2026.8.27"
+          fi
+
+          CLEAN_VER="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$CLEAN_VER" >> "$GITHUB_OUTPUT"
+          echo "Target Tag: $TAG (Version: $CLEAN_VER)"
+
+      - name: Check if Release Already Exists
+        id: check_release
+        if: github.event_name == 'schedule'
+        run: |
+          EXISTS=$(gh release view "${{ steps.meta.outputs.tag }}" --repo "${{ github.repository }}" --json tagName -q .tagName 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "Release ${{ steps.meta.outputs.tag }} already exists. Skipping build."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Code
+        if: steps.check_release.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        if: steps.check_release.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        if: steps.check_release.outputs.skip != 'true'
+        run: |
+          npm ci --include=dev --workspaces --no-audit --ignore-scripts
+          cd apps/desktop
+          npm rebuild node-pty
+
+      - name: Build & Package Desktop App
+        if: steps.check_release.outputs.skip != 'true'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF_NAME: ${{ steps.meta.outputs.tag }}
+          NODE_OPTIONS: "--max-old-space-size=8192"
+        run: |
+          cd apps/desktop
+          npm run build
+          npm run builder -- --linux deb AppImage
+
+      - name: Upload Artifacts
+        if: steps.check_release.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-desktop-linux-${{ steps.meta.outputs.tag }}
+          path: |
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.yaml
+
+      - name: Publish GitHub Release
+        if: steps.check_release.outputs.skip != 'true' && (inputs.publish_release != false || github.event_name == 'schedule' || github.event_name == 'push')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "Hermes Agent Desktop ${{ steps.meta.outputs.tag }}"
+          body: |
+            Automated Desktop build for Hermes Agent [${{ steps.meta.outputs.tag }}](https://github.com/NousResearch/hermes-agent/releases/tag/${{ steps.meta.outputs.tag }}).
+            
+            ### Assets included:
+            * Linux `.deb` package
+            * Linux `.AppImage` standalone binary
+          files: |
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
