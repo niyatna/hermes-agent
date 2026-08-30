@@ -80,6 +80,7 @@ jobs:
         if: steps.check_release.outputs.skip != 'true'
         run: |
           npm ci --include=dev --workspaces --no-audit --ignore-scripts
+          npm pkg set version=${{ steps.meta.outputs.version }} --prefix apps/desktop
           cd apps/desktop
           npm rebuild node-pty
 
@@ -88,11 +89,14 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ steps.meta.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
           cd apps/desktop
+          # Build renderer and bundle electron-main
           npm run build
-          npm run builder -- --linux deb AppImage
+          # Build Linux deb and AppImage packages without built-in publisher
+          npm run builder -- --linux deb AppImage --publish never
 
       - name: Upload Artifacts
         if: steps.check_release.outputs.skip != 'true'
