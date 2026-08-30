@@ -107,108 +107,8 @@ jobs:
       - name: Apply Niyatna Customizations (System Tray & Native GTK Controls)
         if: steps.check_release.outputs.skip != 'true'
         run: |
-          node -e "
-          const fs = require('fs');
-          const path = require('path');
-          const mainTsPath = path.join(process.cwd(), 'apps/desktop/electron/main.ts');
-          if (!fs.existsSync(mainTsPath)) {
-            console.error('[niyatna-patch] main.ts not found');
-            process.exit(1);
-          }
-          let code = fs.readFileSync(mainTsPath, 'utf8');
-
-          // 1. Return false for Linux in getTitleBarOverlayOptions
-          if (code.includes('function getTitleBarOverlayOptions() {') && !code.includes('if (IS_LINUX) {\n    return false\n  }')) {
-            code = code.replace(
-              'function getTitleBarOverlayOptions() {',
-              'function getTitleBarOverlayOptions() {\n  if (IS_LINUX) {\n    return false\n  }'
-            );
-            console.log('[niyatna-patch] ✓ Disabled titleBarOverlay on Linux');
-          }
-
-          // 2. Native GTK Frame for Linux in BrowserWindow options
-          const targetWin = \`    titleBarStyle: 'hidden',
-    titleBarOverlay: getTitleBarOverlayOptions(),
-    trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,\`;
-
-          const replaceWin = \`    ...(IS_LINUX
-      ? { frame: true, titleBarStyle: 'default' as const, titleBarOverlay: false }
-      : {
-          titleBarStyle: 'hidden' as const,
-          titleBarOverlay: getTitleBarOverlayOptions(),
-          trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined
-        }),\`;
-
-          if (code.includes(targetWin)) {
-            code = code.replace(targetWin, replaceWin);
-            console.log('[niyatna-patch] ✓ Set native GTK frame options for Linux');
-          }
-
-          // 3. System Tray & Close-to-Tray logic
-          const targetTrayHook = '  const createdMainWindow = mainWindow';
-          const trayCode = \`  // System Tray Setup
-  if (!(global as any).appTray) {
-    const iconPath = getAppIconPath();
-    if (iconPath) {
-      try {
-        const { Tray, Menu } = require('electron');
-        const tray = new Tray(iconPath);
-        ;(global as any).appTray = tray;
-        const contextMenu = Menu.buildFromTemplate([
-          {
-            label: 'Show Hermes',
-            click: () => {
-              if (mainWindow) {
-                mainWindow.show();
-                mainWindow.focus();
-              }
-            }
-          },
-          {
-            label: 'Quit',
-            click: () => {
-              ;(app as any).isQuiting = true;
-              app.quit();
-            }
-          }
-        ]);
-        tray.setToolTip('Hermes Desktop');
-        tray.setContextMenu(contextMenu);
-        tray.on('click', () => {
-          if (mainWindow) {
-            if (mainWindow.isVisible()) {
-              mainWindow.hide();
-            } else {
-              mainWindow.show();
-              mainWindow.focus();
-            }
-          }
-        });
-      } catch (e) {
-        console.error('Failed to create system tray:', e);
-      }
-    }
-  }
-
-  // Minimize to tray on close
-  mainWindow.on('close', (event) => {
-    if (!(app as any).isQuiting) {
-      event.preventDefault();
-      mainWindow.hide();
-      return false;
-    }
-  });
-
-  const createdMainWindow = mainWindow\`;
-
-          if (code.includes(targetTrayHook) && !code.includes('// System Tray Setup')) {
-            code = code.replace(targetTrayHook, trayCode);
-            console.log('[niyatna-patch] ✓ Injected System Tray and Close-to-Tray logic');
-          }
-
-          fs.writeFileSync(mainTsPath, code, 'utf8');
-          console.log('[niyatna-patch] Patch successfully applied!');
-          "
+          curl -sSL "https://raw.githubusercontent.com/niyatna/hermes-agent/main/scripts/apply-niyatna-patches.mjs" -o /tmp/patch.mjs
+          node /tmp/patch.mjs
 
       - name: Build & Package Desktop App
         if: steps.check_release.outputs.skip != 'true'
@@ -244,7 +144,7 @@ jobs:
             ### Included Customizations (Niyatna Build):
             * **System Tray Integration**: Background indicator on GNOME Top Bar with Show/Quit menu & toggle.
             * **Close to Tray**: Window minimizes to tray on close button.
-            * **Native GNOME GTK Frame**: Window decorations adhere to GNOME GTK theme.
+            * **Native GNOME GTK Frame**: Window decorations adhere to native GNOME GTK theme.
             
             ### Assets included:
             * Linux `.deb` package
