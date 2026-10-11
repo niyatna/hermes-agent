@@ -120,6 +120,13 @@ jobs:
         run: |
           cd apps/desktop
           npm run build
+          # electron-builder downloads icon-tool.js (CommonJS) into build/, but
+          # apps/desktop/package.json declares "type": "module", so Node treats
+          # that generated .js as ESM and its require() throws
+          # "require is not defined in ES module scope". A nearer package.json
+          # marks the whole build/ tree CommonJS without touching upstream.
+          mkdir -p build
+          printf '{"type":"commonjs"}\n' > build/package.json
           npm run builder -- --linux deb AppImage --publish never
 
       - name: Upload Artifacts
