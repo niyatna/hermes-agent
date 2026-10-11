@@ -34,7 +34,10 @@ jobs:
       - name: Determine Upstream Ref & Release Metadata
         id: meta
         run: |
-          TARGET="${{ inputs.build_target || 'latest-release' }}"
+          # Scheduled runs have no inputs, so default them to latest-commit:
+          # latest-release resolves to a tag that already exists and the
+          # "Release Already Exists" guard then skips every scheduled build.
+          TARGET="${{ inputs.build_target || 'latest-commit' }}"
 
           if [ "$TARGET" = "custom-ref" ] && [ -n "${{ inputs.custom_ref }}" ]; then
             REF="${{ inputs.custom_ref }}"
