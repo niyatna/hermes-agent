@@ -88,7 +88,7 @@ if (fs.existsSync(builderRunnerPath)) {
   const runner = fs.readFileSync(builderRunnerPath, 'utf8')
   const capped = runner.replace(
     /const HEAP_FLAG = '--max-old-space-size=\d+'/,
-    "const HEAP_FLAG = '--max-old-space-size=6144'"
+    "const HEAP_FLAG = '--max-old-space-size=10240'"
   )
   if (capped !== runner) {
     fs.writeFileSync(builderRunnerPath, capped, 'utf8')
