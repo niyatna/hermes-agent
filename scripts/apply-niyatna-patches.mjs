@@ -11,7 +11,7 @@ if (!fs.existsSync(mainTsPath)) {
 
 let code = fs.readFileSync(mainTsPath, 'utf8')
 
-console.log('[niyatna-patch] Applying Niyatna System Tray & Native GTK Window Controls patch...')
+console.log('[niyatna-patch] Applying Niyatna Native GTK Window Controls patch...')
 
 // 1. Patch getTitleBarOverlayOptions to return false on Linux
 if (code.includes('function getTitleBarOverlayOptions() {') && !code.includes('if (process.platform === \'linux\') {\n    return false\n  }')) {
@@ -48,90 +48,6 @@ if (createWinIdx !== -1) {
   if (after.includes(targetWinOpts)) {
     after = after.replace(targetWinOpts, replaceWinOpts)
     console.log('[niyatna-patch] ✓ Replaced window frame options with native GTK frame on Linux')
-  }
-
-  // System Tray injection inside createWindow
-  const targetTrayHook = `  const createdMainWindow = mainWindow`
-  const trayCode = `  // System Tray Setup
-  if (!(global as any).appTray) {
-    const iconPath = getAppIconPath()
-    if (iconPath) {
-      try {
-        const { Tray, Menu, nativeImage } = require('electron')
-        let trayIcon = nativeImage.createFromPath(iconPath)
-        if (!trayIcon.isEmpty()) {
-          trayIcon = trayIcon.resize({ width: 22, height: 22 })
-        }
-        const tray = new Tray(trayIcon)
-        ;(global as any).appTray = tray
-        const contextMenu = Menu.buildFromTemplate([
-          {
-            label: 'Show Hermes',
-            click: () => {
-              if (mainWindow) {
-                if (mainWindow.isMinimized()) mainWindow.restore()
-                mainWindow.show()
-                mainWindow.focus()
-              }
-            }
-          },
-          {
-            label: 'Quit',
-            click: () => {
-              ;(app as any).isQuiting = true
-              app.quit()
-            }
-          }
-        ])
-        tray.setToolTip('Hermes Desktop')
-        tray.setContextMenu(contextMenu)
-        tray.on('click', () => {
-          if (mainWindow) {
-            if (mainWindow.isVisible()) {
-              mainWindow.hide()
-            } else {
-              if (mainWindow.isMinimized()) mainWindow.restore()
-              mainWindow.show()
-              mainWindow.focus()
-            }
-          }
-        })
-      } catch (e) {
-        console.error('Failed to create system tray:', e)
-      }
-    }
-  }
-
-  // Minimize to tray on close
-  mainWindow.on('close', (event) => {
-    if (!(app as any).isQuiting) {
-      event.preventDefault()
-      mainWindow.hide()
-      return false
-    }
-  })
-
-  // Ensure window is revealed and focused on Linux
-  if (process.platform === 'linux') {
-    mainWindow.once('ready-to-show', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.show()
-        mainWindow.focus()
-      }
-    })
-    mainWindow.webContents.once('did-finish-load', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.show()
-        mainWindow.focus()
-      }
-    })
-  }
-
-  const createdMainWindow = mainWindow`
-
-  if (after.includes(targetTrayHook) && !after.includes('// System Tray Setup')) {
-    after = after.replace(targetTrayHook, trayCode)
-    console.log('[niyatna-patch] ✓ Injected System Tray & Close-to-Tray logic')
   }
 
   code = before + after
