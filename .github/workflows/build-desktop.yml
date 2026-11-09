@@ -124,10 +124,10 @@ jobs:
         run: |
           set -euo pipefail
           # electron-builder's module collector grows without bound over pnpm's
-          # isolated symlink layout and OOMs regardless of heap size. A hoisted
-          # tree is the layout it actually expects. The setting must live in
-          # .npmrc; the --config CLI flag is not honored for it.
-          printf 'node-linker=hoisted\n' >> .npmrc
+          # isolated symlink layout and OOMs at any heap size. A hoisted tree is
+          # the layout it expects. pnpm 12 reads settings from
+          # pnpm-workspace.yaml, not .npmrc.
+          printf '\nnodeLinker: hoisted\n' >> pnpm-workspace.yaml
           pnpm install --frozen-lockfile --ignore-scripts
           if [ -d node_modules/.pnpm ]; then
             echo "::error::node-linker=hoisted did not take effect (node_modules/.pnpm exists)"
