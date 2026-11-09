@@ -196,9 +196,10 @@ jobs:
             Automated Desktop build for Hermes Agent [${{ steps.meta.outputs.ref }}](https://github.com/NousResearch/hermes-agent/tree/${{ steps.meta.outputs.ref }}).
             
             ### Included Customizations (Niyatna Build):
-            * **System Tray Integration**: Background indicator on GNOME Top Bar with Show/Quit menu & toggle.
-            * **Close to Tray**: Window minimizes to tray on close button.
-            * **Native GNOME GTK Frame**: Window decorations adhere to native GNOME GTK theme.
+            * **Native GNOME GTK Frame**: Window decorations adhere to the native GNOME GTK theme.
+
+            System tray and close-to-tray are upstream features; enable them in
+            Settings if you want a panel indicator.
             
             ### Assets included:
             * Linux `.deb` package
