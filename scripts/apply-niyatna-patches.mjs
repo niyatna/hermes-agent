@@ -79,5 +79,22 @@ if (code.includes(targetSecondInstance)) {
   console.log('[niyatna-patch] ✓ Patched second-instance to unhide from tray on dock click')
 }
 
+// 4. Cap electron-builder's heap for a 16GB CI runner
+// run-electron-builder.mjs appends its own --max-old-space-size=16384 AFTER the
+// inherited NODE_OPTIONS, so the last flag wins and the packaging pass dies in
+// mark-compact on ubuntu-latest. Rewrite the constant instead.
+const builderRunnerPath = path.join(repoRoot, 'apps/desktop/scripts/run-electron-builder.mjs')
+if (fs.existsSync(builderRunnerPath)) {
+  const runner = fs.readFileSync(builderRunnerPath, 'utf8')
+  const capped = runner.replace(
+    /const HEAP_FLAG = '--max-old-space-size=\d+'/,
+    "const HEAP_FLAG = '--max-old-space-size=6144'"
+  )
+  if (capped !== runner) {
+    fs.writeFileSync(builderRunnerPath, capped, 'utf8')
+    console.log('[niyatna-patch] ✓ Capped electron-builder heap at 6144MB')
+  }
+}
+
 fs.writeFileSync(mainTsPath, code, 'utf8')
 console.log('[niyatna-patch] Patch successfully applied!')
