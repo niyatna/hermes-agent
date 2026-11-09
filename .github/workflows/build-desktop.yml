@@ -123,9 +123,16 @@ jobs:
         if: steps.check_release.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          # electron-builder's module collector balloons over pnpm's isolated
-          # symlink layout; a hoisted tree keeps packaging memory bounded.
-          pnpm install --frozen-lockfile --ignore-scripts --config.node-linker=hoisted
+          # electron-builder's module collector grows without bound over pnpm's
+          # isolated symlink layout and OOMs regardless of heap size. A hoisted
+          # tree is the layout it actually expects. The setting must live in
+          # .npmrc; the --config CLI flag is not honored for it.
+          printf 'node-linker=hoisted\n' >> .npmrc
+          pnpm install --frozen-lockfile --ignore-scripts
+          if [ -d node_modules/.pnpm ]; then
+            echo "::error::node-linker=hoisted did not take effect (node_modules/.pnpm exists)"
+            exit 1
+          fi
           node -e "const f='apps/desktop/package.json';const p=require('./'+f);p.version='${{ steps.meta.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\\n')"
 
       - name: Apply Niyatna Customizations (Native GTK Window Controls)
