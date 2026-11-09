@@ -129,8 +129,10 @@ jobs:
           # pnpm-workspace.yaml, not .npmrc.
           printf '\nnodeLinker: hoisted\n' >> pnpm-workspace.yaml
           pnpm install --frozen-lockfile --ignore-scripts
-          if [ -d node_modules/.pnpm ]; then
-            echo "::error::node-linker=hoisted did not take effect (node_modules/.pnpm exists)"
+          # Hoisted still leaves node_modules/.pnpm, but packages are real
+          # directories instead of symlinks into the isolated store.
+          if [ -L node_modules/typescript ] || [ -L node_modules/vite ]; then
+            echo "::error::nodeLinker=hoisted did not take effect (packages are symlinks)"
             exit 1
           fi
           node -e "const f='apps/desktop/package.json';const p=require('./'+f);p.version='${{ steps.meta.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\\n')"
