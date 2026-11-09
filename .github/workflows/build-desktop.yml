@@ -159,7 +159,22 @@ jobs:
           mkdir -p apps/desktop/build
           printf '{"type":"commonjs"}\n' > apps/desktop/build/package.json
           pnpm --filter hermes run build
-          pnpm --filter hermes run builder -- --linux deb AppImage --publish never
+          # Upstream's prepared-packaging path: acquire the packaging tools into
+          # a receipt, then run electron-builder with --prepared. The plain
+          # `builder` script takes the source path, whose node_modules collector
+          # grows without bound and OOMs on this runner.
+          cd apps/desktop
+          node scripts/prepare-packaging-tools.mjs \
+            --source ../.. \
+            --out build/packager/linux-x64 \
+            --target linux-x64 \
+            --cache ../../.cache/desktop-inputs/packager \
+            --format AppImage --format deb
+          node scripts/stage-native-deps.mjs --source ../.. --out build/native-deps --platform linux --arch x64
+          node scripts/run-electron-builder.mjs \
+            --prepared build/packager/linux-x64/prepared.json \
+            --native-deps build/native-deps \
+            --linux AppImage deb --x64 --publish never
 
       - name: Upload Artifacts
         if: steps.check_release.outputs.skip != 'true'
