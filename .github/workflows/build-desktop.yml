@@ -97,17 +97,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+
+      # Upstream pins pnpm in pm/lock.json and the root preinstall script refuses
+      # any other version, so install exactly the pinned one.
+      - name: Install pinned pnpm
+        if: steps.check_release.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          PINNED_PNPM=$(node -p "require('./pm/lock.json').packages.pnpm.version")
+          echo "Installing pnpm $PINNED_PNPM"
+          npm install -g "pnpm@$PINNED_PNPM"
+          pnpm --version
 
       - name: Install Dependencies
         if: steps.check_release.outputs.skip != 'true'
         run: |
-          npm ci --include=dev --workspaces --no-audit --ignore-scripts
-          npm pkg set version=${{ steps.meta.outputs.version }} --prefix apps/desktop
-          cd apps/desktop
-          npm rebuild node-pty
+          set -euo pipefail
+          pnpm install --frozen-lockfile --ignore-scripts
+          node -e "const f='apps/desktop/package.json';const p=require('./'+f);p.version='${{ steps.meta.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\\n')"
 
-      - name: Apply Niyatna Customizations (System Tray & Native GTK Controls)
+      - name: Apply Niyatna Customizations (Native GTK Window Controls)
         if: steps.check_release.outputs.skip != 'true'
         run: |
           curl -sSL "https://raw.githubusercontent.com/niyatna/hermes-agent/main/scripts/apply-niyatna-patches.mjs" -o /tmp/patch.mjs
@@ -121,16 +130,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
-          cd apps/desktop
-          npm run build
-          # electron-builder downloads icon-tool.js (CommonJS) into build/, but
-          # apps/desktop/package.json declares "type": "module", so Node treats
-          # that generated .js as ESM and its require() throws
-          # "require is not defined in ES module scope". A nearer package.json
-          # marks the whole build/ tree CommonJS without touching upstream.
-          mkdir -p build
-          printf '{"type":"commonjs"}\n' > build/package.json
-          npm run builder -- --linux deb AppImage --publish never
+          set -euo pipefail
+          # electron-builder downloads icon-tool.js (CommonJS) into apps/desktop/build/,
+          # but apps/desktop/package.json declares "type": "module", so Node treats
+          # the generated .js as ESM and its require() throws. A nearer package.json
+          # marks that tree CommonJS without touching upstream.
+          mkdir -p apps/desktop/build
+          printf '{"type":"commonjs"}\n' > apps/desktop/build/package.json
+          pnpm --filter hermes run build
+          pnpm --filter hermes run builder -- --linux deb AppImage --publish never
 
       - name: Upload Artifacts
         if: steps.check_release.outputs.skip != 'true'
