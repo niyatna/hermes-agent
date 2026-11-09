@@ -92,11 +92,13 @@ jobs:
           ref: ${{ steps.meta.outputs.ref }}
           fetch-depth: 1
 
+      # Upstream engines require Node >=26; keep in step with pm/lock.json's
+      # pinned node artifact when upstream bumps it.
       - name: Setup Node.js
         if: steps.check_release.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26'
 
       # Upstream pins pnpm in pm/lock.json and the root preinstall script refuses
       # any other version, so install exactly the pinned one.
