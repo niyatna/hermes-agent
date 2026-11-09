@@ -102,6 +102,14 @@ jobs:
 
       # Upstream pins pnpm in pm/lock.json and the root preinstall script refuses
       # any other version, so install exactly the pinned one.
+      # The HUD modifier helper compiles against libx11/libxi; without them the
+      # build only warns, but the packaged renderer then reports a stale bundle.
+      - name: Install native build headers
+        if: steps.check_release.outputs.skip != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libx11-dev libxi-dev
+
       - name: Install pinned pnpm
         if: steps.check_release.outputs.skip != 'true'
         run: |
@@ -130,7 +138,7 @@ jobs:
           GITHUB_SHA: ${{ steps.meta.outputs.ref }}
           GITHUB_REF_NAME: ${{ steps.meta.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_OPTIONS: "--max-old-space-size=8192"
+          NODE_OPTIONS: "--max-old-space-size=16384"
         run: |
           set -euo pipefail
           # electron-builder downloads icon-tool.js (CommonJS) into apps/desktop/build/,
